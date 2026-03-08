@@ -6,7 +6,7 @@ import {
     UserPlus, FileUp, Eye, X, ChevronLeft, Loader2, 
     CheckCircle2, AlertCircle, Edit, Save, BookOpen, 
     UserCircle2, CalendarCheck, ToggleLeft, ToggleRight,
-    PlusCircle, Search, Mail, Phone
+    PlusCircle, Search, Mail, Phone, Users as UsersIcon // Alias for clarity
 } from 'lucide-react';
 
 const BatchDetail = () => {
@@ -26,7 +26,7 @@ const BatchDetail = () => {
     const [isEditStudentModalOpen, setIsEditStudentModalOpen] = useState(false);
     const [editingStudent, setEditingStudent] = useState(null);
     
-    // Edit Course Progress Modal
+    // Course Progress Modal
     const [isEditCourseProgressModalOpen, setIsEditCourseProgressModalOpen] = useState(false);
     const [editingCourseProgress, setEditingCourseProgress] = useState(null);
 
@@ -37,12 +37,15 @@ const BatchDetail = () => {
     const [enrollmentForm, setEnrollmentForm] = useState({
         course_assignment: '', is_completed: false
     });
+
+    // --- NEW: Manual Enrollment Modal State ---
+    const [isManualEnrollModalOpen, setIsManualEnrollModalOpen] = useState(false);
     
     // --- FEEDBACK STATES ---
     const [message, setMessage] = useState({ type: '', text: '' });
     const [uploading, setUploading] = useState(false);
 
-    // --- FORM STATES ---
+    // --- FORM STATE (Manual Enrollment) ---
     const [manualData, setManualData] = useState({
         student_id: '', first_name: '', last_name: '',
         email: '', phone_number: '', 
@@ -81,18 +84,22 @@ const BatchDetail = () => {
         }
     };
 
-    // --- 1. MANUAL STUDENT ENROLLMENT ---
+    // --- 1. MANUAL STUDENT ENROLLMENT (now through modal) ---
+    const openManualEnrollModal = () => {
+        setManualData({ // Reset form data
+            student_id: '', first_name: '', last_name: '',
+            email: '', phone_number: '', degree_choice: 'M.Sc', status: 'Active'
+        });
+        setIsManualEnrollModalOpen(true);
+    };
+
     const handleManualSubmit = async (e) => {
         e.preventDefault();
         try {
             await api.post('students/', { ...manualData, batch: id });
             setMessage({ type: 'success', text: 'Student enrolled successfully!' });
-            setManualData({
-                student_id: '', first_name: '', last_name: '',
-                email: '', phone_number: '', 
-                degree_choice: 'M.Sc', status: 'Active'
-            });
-            fetchBatchData();
+            setIsManualEnrollModalOpen(false); // Close modal
+            fetchBatchData(); // Refresh student list
         } catch (err) {
             const errorMsg = err.response?.data?.email ? "Email already exists." : 
                              err.response?.data?.student_id ? "Student ID already exists." : 
@@ -151,13 +158,10 @@ const BatchDetail = () => {
             courseName: courseProgressItem.name
         };
 
-        // If no existing enrollment (it was just "Pending" based on curriculum), try to find a default CourseAssignment
         if (!enrollmentData.id) {
             try {
-                // Find assignments for this course
                 const res = await api.get(`course_assign/?course__id=${courseProgressItem.course_id_for_enrollment}`);
                 if (res.data.length > 0) {
-                    // Prefer assignment for this batch, else pick first available
                     const matchingAssignment = res.data.find(a => a.batch === student.batch) || res.data[0];
                     enrollmentData.course_assignment = matchingAssignment.id;
                 } else {
@@ -185,20 +189,17 @@ const BatchDetail = () => {
             };
             
             if (editingCourseProgress.id) {
-                // Update existing
                 await api.put(`student-enrollments/${editingCourseProgress.id}/`, payload);
             } else {
-                // Create new
                 await api.post('student-enrollments/', payload);
             }
             
             setIsEditCourseProgressModalOpen(false);
             setMessage({ type: 'success', text: 'Course progress updated!' });
             
-            // Refresh specific student to update modal UI immediately
             const updatedStudentRes = await api.get(`students/${selectedStudent.id}/`);
             setSelectedStudent(updatedStudentRes.data);
-            fetchBatchData(); // Background refresh
+            fetchBatchData(); 
         } catch (err) {
             alert("Failed to update course progress.");
         }
@@ -214,7 +215,6 @@ const BatchDetail = () => {
     const handleEnrollSubmit = async (e) => {
         e.preventDefault();
         try {
-            // Find selected assignment to get default semester/year
             const selectedAssignment = availableAssignments.find(a => a.id == enrollmentForm.course_assignment);
             
             const payload = {
@@ -239,7 +239,11 @@ const BatchDetail = () => {
         }
     };
 
-    if (loading) return <div className="flex items-center justify-center h-screen"><Loader2 className="animate-spin text-blue-600" size={40} /></div>;
+    if (loading) return (
+        <div className="flex items-center justify-center h-screen">
+            <Loader2 className="animate-spin text-blue-600" size={40} />
+        </div>
+    );
 
     return (
         <div className="p-8 max-w-7xl mx-auto">
@@ -262,31 +266,24 @@ const BatchDetail = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                {/* --- LEFT: ENROLLMENT FORMS --- */}
+                {/* --- LEFT: BULK ACTIONS --- */}
                 <div className="lg:col-span-4 space-y-6">
-                    {/* Manual Enrollment */}
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                        <h2 className="text-lg font-bold mb-6 flex items-center gap-2 text-slate-700">
-                            <UserPlus size={20} className="text-blue-600" /> Manual Enrollment
-                        </h2>
-                        <form onSubmit={handleManualSubmit} className="space-y-4">
-                            <input className="w-full p-2.5 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Student ID (Unique)" value={manualData.student_id} onChange={e => setManualData({...manualData, student_id: e.target.value})} required />
-                            <div className="grid grid-cols-2 gap-3">
-                                <input className="p-2.5 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="First Name" value={manualData.first_name} onChange={e => setManualData({...manualData, first_name: e.target.value})} required />
-                                <input className="p-2.5 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Last Name" value={manualData.last_name} onChange={e => setManualData({...manualData, last_name: e.target.value})} required />
-                            </div>
-                            <input className="w-full p-2.5 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Email Address" type="email" value={manualData.email} onChange={e => setManualData({...manualData, email: e.target.value})} required />
-                            <input className="w-full p-2.5 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Phone Number" value={manualData.phone_number} onChange={e => setManualData({...manualData, phone_number: e.target.value})} />
-                            <button className="w-full bg-blue-600 text-white p-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 uppercase text-xs tracking-widest">Enroll Student</button>
-                        </form>
-                    </div>
-
                     {/* CSV Upload */}
                     <div className="bg-slate-900 p-6 rounded-2xl shadow-xl text-white">
                         <h2 className="text-lg font-bold mb-4 flex items-center gap-2"><FileUp size={20} className="text-blue-400" /> CSV Bulk Upload</h2>
                         {uploading ? <Loader2 className="animate-spin text-blue-400 mx-auto my-4"/> : 
                         <input type="file" accept=".csv" onChange={handleFileUpload} className="block w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-600 file:text-white cursor-pointer"/>}
                         <p className="text-[10px] text-slate-500 mt-4 italic text-center">Headers: student_id, first_name, last_name, email, phone_number, degree_choice</p>
+                    </div>
+
+                    {/* NEW: Button to open Manual Enrollment Modal */}
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex justify-center items-center">
+                        <button 
+                            onClick={openManualEnrollModal} 
+                            className="bg-blue-600 text-white p-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 uppercase text-xs tracking-widest flex items-center gap-2"
+                        >
+                            <UserPlus size={20} /> Enroll Single Student
+                        </button>
                     </div>
                 </div>
 
@@ -329,7 +326,30 @@ const BatchDetail = () => {
                 </div>
             </div>
 
-            {/* --- MODAL 1: EDIT STUDENT PERSONAL INFO --- */}
+            {/* --- MODAL 1: MANUAL ENROLLMENT --- (New Modal) */}
+            {isManualEnrollModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-200">
+                        <div className="bg-blue-600 p-6 flex justify-between items-center text-white">
+                            <h2 className="text-xl font-bold flex items-center gap-2 italic"><UserPlus size={22}/> Enroll New Student</h2>
+                            <button onClick={() => setIsManualEnrollModalOpen(false)} className="hover:bg-white/20 p-2 rounded-full transition"><X size={20} /></button>
+                        </div>
+                        <form onSubmit={handleManualSubmit} className="p-8 space-y-4">
+                            <input className="w-full p-2.5 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Student ID (Unique)" value={manualData.student_id} onChange={e => setManualData({...manualData, student_id: e.target.value})} required />
+                            <div className="grid grid-cols-2 gap-3">
+                                <input className="p-2.5 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="First Name" value={manualData.first_name} onChange={e => setManualData({...manualData, first_name: e.target.value})} required />
+                                <input className="p-2.5 border rounded-xl mt-1 outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Last Name" value={manualData.last_name} onChange={e => setManualData({...manualData, last_name: e.target.value})} required />
+                            </div>
+                            <input className="w-full p-2.5 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Email Address" type="email" value={manualData.email} onChange={e => setManualData({...manualData, email: e.target.value})} required />
+                            <input className="w-full p-2.5 border rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="Phone Number (Optional)" value={manualData.phone_number} onChange={e => setManualData({...manualData, phone_number: e.target.value})} />
+                            <select className="w-full p-2.5 border rounded-xl mt-1 outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white" value={manualData.degree_choice} onChange={e => setManualData({...manualData, degree_choice: e.target.value})}><option value="M.Sc">M.Sc</option><option value="PgD">PgD</option><option value="M.ED">M.ED</option></select>
+                            <button type="submit" className="w-full bg-blue-600 text-white p-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 uppercase text-xs tracking-widest">Enroll Student</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* --- MODAL 2: EDIT STUDENT PERSONAL INFO --- (Same as before) */}
             {isEditStudentModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-200">
@@ -353,7 +373,7 @@ const BatchDetail = () => {
                 </div>
             )}
 
-            {/* --- MODAL 2: VIEW DETAILS / TRANSCRIPT --- */}
+            {/* --- MODAL 3: VIEW DETAILS / TRANSCRIPT --- (Same as before) */}
             {selectedStudent && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200 max-h-[90vh] flex flex-col">
@@ -364,7 +384,7 @@ const BatchDetail = () => {
                                 <p className="text-xs font-mono mt-1 opacity-80">{selectedStudent.student_id}</p>
                             </div>
                             <button onClick={() => setSelectedStudent(null)} className="bg-white/10 hover:bg-white/20 p-2 rounded-full transition z-10"><X size={20}/></button>
-                            <UserCircle2 className="absolute -bottom-6 -right-6 text-white/10 w-40 h-40" />
+                            <UsersIcon className="absolute -bottom-6 -right-6 text-white/10 w-40 h-40" /> {/* Changed to UsersIcon */}
                         </div>
 
                         <div className="p-8 space-y-4 overflow-y-auto">
@@ -406,7 +426,7 @@ const BatchDetail = () => {
                 </div>
             )}
 
-            {/* --- MODAL 3: EDIT COURSE PROGRESS --- */}
+            {/* --- MODAL 4: EDIT COURSE PROGRESS --- (Same as before) */}
             {isEditCourseProgressModalOpen && editingCourseProgress && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in duration-200">
@@ -430,7 +450,7 @@ const BatchDetail = () => {
                 </div>
             )}
 
-            {/* --- MODAL 4: CROSS-BATCH ENROLLMENT --- */}
+            {/* --- MODAL 5: CROSS-BATCH ENROLLMENT --- (Same as before) */}
             {isEnrollModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in duration-200">
@@ -463,7 +483,6 @@ const BatchDetail = () => {
     );
 };
 
-// Helper for Detail Rows
 const DetailRow = ({ label, value }) => (
     <div className="flex justify-between items-center border-b pb-2 border-gray-50 group">
         <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{label}</span>
