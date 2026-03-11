@@ -2,35 +2,42 @@ import React, { useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { AuthContext, AuthProvider } from './context/AuthContext';
 
-// Pages
+// --- Auth Pages ---
 import Login from './pages/Login';
 import ChangePassword from './pages/ChangePassword';
+
+// --- Admin & Config Modules ---
 import UserManagement from './pages/UserManagement';
 import AcademicConfig from './pages/AcademicConfig';
+
+// --- Student & Course Modules ---
 import BatchList from './pages/BatchList';
 import BatchDetail from './pages/BatchDetail';
 import CourseAssignment from './pages/CourseAssignment';
-import Dashboard from './pages/Dashboard'; // NEW: Import the Dashboard
 
-// Icons
+// --- Dashboards & Alumni Modules ---
+import Dashboard from './pages/Dashboard';           // Main Student Dashboard
+import AlumniDashboard from './pages/AlumniDashboard'; // Alumni Hub & Search Directory
+import AlumniDetail from './pages/AlumniDetail';       // Individual Alumni Profile
+
+// --- Icons ---
 import { 
   LayoutDashboard, 
   Users, 
   LogOut, 
-  UserCircle, 
   FileBarChart, 
   Settings, 
   ShieldCheck, 
   Database, 
   BookOpen, 
-  GraduationCap
+  BriefcaseBusiness 
 } from 'lucide-react';
 
 /**
  * ProtectedRoute Component
  * Handles authentication checks, forced password changes, and role-based access.
  */
-const ProtectedRoute = ({ children, allowedRoles = [] }) => {
+const ProtectedRoute = ({ children, allowedRoles =[] }) => {
     const { user, loading } = useContext(AuthContext);
     const location = useLocation();
 
@@ -62,31 +69,32 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 
 /**
  * Sidebar Component
- * Renders navigation menu based on user roles.
+ * Renders navigation menu based on user roles dynamically.
  */
 const Sidebar = () => {
     const { user, logout } = useContext(AuthContext);
     const location = useLocation();
 
-    const menuItems = [
-        { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} />, roles: ['ADMIN', 'FACULTY', 'PIM', 'PS'] },
+    const menuItems =[
+        { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} />, roles:['ADMIN', 'FACULTY', 'PIM', 'PS'] },
         { name: 'User Management', path: '/users', icon: <Users size={20} />, roles: ['ADMIN'] },
-        { name: 'Academic Setup', path: '/config', icon: <Settings size={20} />, roles: ['ADMIN'] },
+        { name: 'Academic Setup', path: '/config', icon: <Settings size={20} />, roles:['ADMIN'] },
         { name: 'Student Batches', path: '/batches', icon: <Database size={20} />, roles: ['ADMIN', 'PIM'] },
-        { name: 'Course Assignment', path: '/courses', icon: <BookOpen size={20} />, roles: ['ADMIN', 'PIM', 'FACULTY'] },
+        { name: 'Course Assignment', path: '/courses', icon: <BookOpen size={20} />, roles:['ADMIN', 'PIM', 'FACULTY'] },
+        { name: 'Alumni Management', path: '/alumni', icon: <BriefcaseBusiness size={20} />, roles: ['ADMIN', 'PIM'] }, 
         { name: 'Evaluations', path: '/evaluations', icon: <FileBarChart size={20} />, roles: ['ADMIN', 'FACULTY', 'PS'] },
     ];
 
     return (
-        <aside className="w-64 bg-slate-900 text-white flex flex-col min-h-screen sticky top-0 shadow-2xl">
+        <aside className="w-64 bg-slate-900 text-white flex flex-col min-h-screen sticky top-0 shadow-2xl z-40">
             <div className="p-8 border-b border-slate-800 flex flex-col items-center">
-                <div className="bg-blue-600 p-2 rounded-lg mb-3 shadow-lg shadow-blue-500/20">
-                    <GraduationCap size={28} className="text-white" />
+                <div className="bg-blue-600 p-3 rounded-2xl mb-3 shadow-lg shadow-blue-500/20">
+                    <ShieldCheck size={28} className="text-white" />
                 </div>
-                <h1 className="text-lg font-black tracking-tighter text-white">ACADEMIC<span className="text-blue-500">PORTAL</span></h1>
+                <h1 className="text-lg font-black tracking-tighter text-white uppercase">BRAC IED<span className="text-blue-500"> SIM</span></h1>
             </div>
 
-            <nav className="flex-1 p-4 space-y-1.5 mt-4">
+            <nav className="flex-1 p-4 space-y-1.5 mt-4 overflow-y-auto">
                 {menuItems.map((item) => (
                     item.roles.includes(user?.role) && (
                         <Link
@@ -98,7 +106,7 @@ const Sidebar = () => {
                                 : 'hover:bg-slate-800 text-slate-400 hover:text-white'
                             }`}
                         >
-                            <span className={`${location.pathname === item.path ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'} transition-colors`}>
+                            <span className={`${(location.pathname.startsWith(item.path) && item.path !== '/') || location.pathname === item.path ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'} transition-colors`}>
                                 {item.icon}
                             </span>
                             <span className="text-sm font-bold tracking-tight">{item.name}</span>
@@ -109,44 +117,51 @@ const Sidebar = () => {
 
             <div className="p-4 border-t border-slate-800 bg-slate-900/50">
                 <div className="flex items-center gap-3 mb-4 px-2">
-                    <div className="bg-gradient-to-tr from-slate-700 to-slate-600 h-10 w-10 rounded-full flex items-center justify-center text-blue-400 font-black border border-slate-500 text-xs shadow-inner">
+                    <div className="bg-gradient-to-tr from-slate-700 to-slate-600 h-10 w-10 rounded-full flex items-center justify-center text-blue-400 font-black border border-slate-500 text-xs shadow-inner shrink-0 uppercase">
                         {user?.first_name?.charAt(0)}{user?.last_name?.charAt(0)}
                     </div>
                     <div className="overflow-hidden">
                         <p className="text-xs font-bold truncate text-slate-200">{user?.first_name} {user?.last_name}</p>
-                        <p className="text-[9px] text-blue-500 font-black uppercase tracking-widest">{user?.role?.replace('_', ' ')}</p>
+                        <p className="text-[9px] text-blue-500 font-black uppercase tracking-widest truncate">{user?.role?.replace('_', ' ')}</p>
                     </div>
                 </div>
                 <button 
                     onClick={logout}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all font-bold text-xs"
+                    className="w-full flex items-center justify-center gap-2 p-3 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all font-bold text-xs"
                 >
-                    <LogOut size={18} />
-                    Logout Session
+                    <LogOut size={16} />
+                    Sign Out
                 </button>
             </div>
         </aside>
     );
 };
 
+/**
+ * MainLayout Component
+ * Wraps protected pages with the Sidebar structure
+ */
 const MainLayout = ({ children }) => (
-    <div className="flex min-h-screen bg-gray-50/50">
+    <div className="flex min-h-screen bg-gray-50/50 font-sans">
         <Sidebar />
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-x-hidden">
             {children}
         </main>
     </div>
 );
 
+/**
+ * Main Application Router
+ */
 function App() {
     return (
         <AuthProvider>
             <Router>
                 <Routes>
-                    {/* Public Access */}
+                    {/* --- Public Access --- */}
                     <Route path="/login" element={<Login />} />
 
-                    {/* Security Required */}
+                    {/* --- Security Required --- */}
                     <Route path="/change-password" element={
                         <ProtectedRoute>
                             <ChangePassword />
@@ -156,52 +171,53 @@ function App() {
                     {/* --- Admin Modules --- */}
                     <Route path="/users" element={
                         <ProtectedRoute allowedRoles={['ADMIN']}>
-                            <MainLayout>
-                                <UserManagement />
-                            </MainLayout>
+                            <MainLayout><UserManagement /></MainLayout>
                         </ProtectedRoute>
                     } />
 
                     <Route path="/config" element={
                         <ProtectedRoute allowedRoles={['ADMIN']}>
-                            <MainLayout>
-                                <AcademicConfig />
-                            </MainLayout>
+                            <MainLayout><AcademicConfig /></MainLayout>
                         </ProtectedRoute>
                     } />
 
                     {/* --- Student Management Modules --- */}
                     <Route path="/batches" element={
                         <ProtectedRoute allowedRoles={['ADMIN', 'PIM']}>
-                            <MainLayout>
-                                <BatchList />
-                            </MainLayout>
+                            <MainLayout><BatchList /></MainLayout>
                         </ProtectedRoute>
                     } />
 
                     <Route path="/batches/:id" element={
                         <ProtectedRoute allowedRoles={['ADMIN', 'PIM']}>
-                            <MainLayout>
-                                <BatchDetail />
-                            </MainLayout>
+                            <MainLayout><BatchDetail /></MainLayout>
                         </ProtectedRoute>
                     } />
 
                     {/* --- Course Assignment Module --- */}
                     <Route path="/courses" element={
                         <ProtectedRoute allowedRoles={['ADMIN', 'PIM', 'FACULTY']}>
-                            <MainLayout>
-                                <CourseAssignment />
-                            </MainLayout>
+                            <MainLayout><CourseAssignment /></MainLayout>
+                        </ProtectedRoute>
+                    } />
+
+                    {/* --- Alumni Management Modules --- */}
+                    <Route path="/alumni" element={
+                        <ProtectedRoute allowedRoles={['ADMIN', 'PIM']}>
+                            <MainLayout><AlumniDashboard /></MainLayout>
+                        </ProtectedRoute>
+                    } />
+                    
+                    <Route path="/alumni/:id" element={
+                        <ProtectedRoute allowedRoles={['ADMIN', 'PIM']}>
+                            <MainLayout><AlumniDetail /></MainLayout>
                         </ProtectedRoute>
                     } />
 
                     {/* --- Executive Dashboard (Main Landing) --- */}
                     <Route path="/" element={
                         <ProtectedRoute>
-                            <MainLayout>
-                                <Dashboard />
-                            </MainLayout>
+                            <MainLayout><Dashboard /></MainLayout>
                         </ProtectedRoute>
                     } />
 
@@ -209,12 +225,14 @@ function App() {
                     <Route path="/evaluations" element={
                         <ProtectedRoute allowedRoles={['ADMIN', 'FACULTY', 'PS']}>
                             <MainLayout>
-                                <div className="p-10 text-gray-400 italic font-medium">Evaluation Reports Engine - Coming Soon</div>
+                                <div className="p-10 text-gray-400 italic font-medium text-center mt-20">
+                                    Evaluation Reports Engine - Coming Soon
+                                </div>
                             </MainLayout>
                         </ProtectedRoute>
                     } />
 
-                    {/* Global Redirect */}
+                    {/* Global Redirect for unmatched routes */}
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </Router>

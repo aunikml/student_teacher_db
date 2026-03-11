@@ -8,11 +8,15 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework import filters # IMPORTANT: Import filters for searching
 
-# Models
-from .models import Batch, Student, StudentCourseEnrollment
-from course_assign.models import CourseAssignment
+# Models from other apps
+from academic_config.models import Course # Used in course progress calculation in serializer
+from course_assign.models import CourseAssignment # Used in course progress calculation and graduation
 
-# Serializers
+# Models from this app
+from .models import Batch, Student, StudentCourseEnrollment 
+from alumni.models import AlumniRecord # IMPORTANT: Import AlumniRecord
+
+# Serializers from this app
 from .serializers import BatchSerializer, StudentSerializer, StudentCourseEnrollmentSerializer
 
 # 1. CUSTOM PERMISSION
@@ -102,9 +106,10 @@ class BatchViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='mark-graduated')
     def mark_graduated(self, request, pk=None):
         """
-        Bulk action to graduate a batch. Safely handles legacy batches without courses.
+        Bulk action to graduate a batch.
         1. Changes status of all students to 'Graduated'.
         2. Marks all assigned courses for this batch as 'Completed' for every student.
+        3. Creates an AlumniRecord for each graduated student if one doesn't exist.
         """
         batch = self.get_object()
         try:
@@ -112,6 +117,17 @@ class BatchViewSet(viewsets.ModelViewSet):
                 students = batch.students.all()
                 updated_count = students.update(status='Graduated')
 
+                alumni_created_count = 0
+                for student in students:
+                    alumni_record, created = AlumniRecord.objects.get_or_create(
+                        original_student=student,
+                        defaults={
+                            'concluding_semester': f"{batch.semester.name} {batch.year.year}"
+                        }
+                    )
+                    if created:
+                        alumni_created_count += 1
+                
                 assignments = CourseAssignment.objects.filter(batch=batch)
                 enrollment_msg = ""
                 
@@ -122,7 +138,10 @@ class BatchViewSet(viewsets.ModelViewSet):
                             enrollment, _ = StudentCourseEnrollment.objects.get_or_create(
                                 student=student,
                                 course_assignment=assignment,
-                                defaults={'semester': assignment.semester, 'year': assignment.start_date.year}
+                                defaults={
+                                    'semester': assignment.semester, 
+                                    'year': assignment.start_date.year
+                                }
                             )
                             if not enrollment.is_completed:
                                 enrollment.is_completed = True
@@ -134,8 +153,9 @@ class BatchViewSet(viewsets.ModelViewSet):
                 else:
                     enrollment_msg = ". No course assignments were found for this batch (legacy mode)."
 
+
             return Response({
-                "message": f"Batch graduated. {updated_count} students updated{enrollment_msg}"
+                "message": f"Batch graduated successfully. {updated_count} students updated, {alumni_created_count} alumni records created{enrollment_msg}"
             }, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -171,8 +191,7 @@ class StudentViewSet(viewsets.ModelViewSet):
     search_fields = ['student_id', 'first_name', 'last_name', 'email']
 
     def get_queryset(self):
-        # We can now remove the manual 'batch_id' filtering as SearchFilter will be primary
-        # but keeping it for direct batch filtering is good practice.
+        # Apply filtering for 'batch' if provided in query params
         queryset = super().get_queryset()
         batch_id = self.request.query_params.get('batch')
         if batch_id:
@@ -193,17 +212,21 @@ class StudentCourseEnrollmentViewSet(viewsets.ModelViewSet):
     filterset_fields = ['student', 'course_assignment']
 
     def perform_create(self, serializer):
+        # Auto-set completed_at date if marking as completed during creation
         if serializer.validated_data.get('is_completed') and not serializer.validated_data.get('completed_at'):
             serializer.validated_data['completed_at'] = timezone.now().date()
         serializer.save()
 
     def perform_update(self, serializer):
+        # Logic to handle toggling completion status and setting/clearing completed_at date
         instance = serializer.instance
         new_status = serializer.validated_data.get('is_completed')
 
         if instance.is_completed is False and new_status is True:
+            # If changing to completed, set date
             serializer.validated_data['completed_at'] = timezone.now().date()
         elif instance.is_completed is True and new_status is False:
+            # If changing to incomplete, clear date
             serializer.validated_data['completed_at'] = None
             
         serializer.save()

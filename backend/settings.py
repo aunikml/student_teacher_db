@@ -46,7 +46,9 @@ INSTALLED_APPS = [
     'academic_config',
     'batches',
     'course_assign',
-    'dashboard', 
+    'dashboard',
+    'alumni', 
+    
     
 ]
 
