@@ -5,73 +5,80 @@ from django.db.models import Count, Q
 
 from .models import AlumniRecord, FurtherEducation
 from .serializers import AlumniRecordSerializer, FurtherEducationSerializer
+from academic_config.models import Program # Import Program model
 
 class IsAdminOrPIM(permissions.BasePermission):
     def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
-        return request.user.role in['ADMIN', 'PIM']
+        return request.user.is_authenticated and request.user.role in['ADMIN', 'PIM']
 
 class AlumniRecordViewSet(viewsets.ModelViewSet):
+    # ... (This viewset remains the same) ...
     serializer_class = AlumniRecordSerializer
     permission_classes = [permissions.IsAuthenticated, IsAdminOrPIM]
     filter_backends =[filters.SearchFilter]
-    
-    # Text search fields
-    search_fields =[
-        'student_id', 
-        'first_name', 
-        'last_name', 
-        'current_occupation'
-    ]
+    search_fields =['student_id', 'first_name', 'last_name', 'current_occupation']
 
     def get_queryset(self):
         queryset = AlumniRecord.objects.all().order_by('-updated_at')
-        
-        # Explicit dropdown filters
         sector = self.request.query_params.get('sector')
         subsector = self.request.query_params.get('subsector')
-        
-        if sector:
-            queryset = queryset.filter(professional_sector=sector)
-        if subsector:
-            queryset = queryset.filter(professional_sector_sub_category=subsector)
-            
+        if sector: queryset = queryset.filter(professional_sector=sector)
+        if subsector: queryset = queryset.filter(professional_sector_sub_category=subsector)
         return queryset
 
 class FurtherEducationViewSet(viewsets.ModelViewSet):
+    # ... (This viewset remains the same) ...
     queryset = FurtherEducation.objects.all()
     serializer_class = FurtherEducationSerializer
     permission_classes = [permissions.IsAuthenticated, IsAdminOrPIM]
     filterset_fields = ['alumni']
 
+# MODIFIED: AlumniDashboardStatsView
 class AlumniDashboardStatsView(APIView):
     permission_classes =[permissions.IsAuthenticated, IsAdminOrPIM]
 
     def get(self, request):
         total_alumni = AlumniRecord.objects.count()
-        employed_count = AlumniRecord.objects.exclude(Q(current_occupation__isnull=True) | Q(current_occupation__exact='')).count()
-        further_ed_count = AlumniRecord.objects.filter(further_educations__isnull=False).distinct().count()
-        countries_count = AlumniRecord.objects.exclude(Q(current_country_of_residence__isnull=True) | Q(current_country_of_residence__exact='')).values('current_country_of_residence').distinct().count()
-        sector_distribution = AlumniRecord.objects.exclude(Q(professional_sector__isnull=True) | Q(professional_sector__exact='')).values('professional_sector').annotate(count=Count('id')).order_by('-count')
-        sub_sector_distribution = AlumniRecord.objects.exclude(Q(professional_sector_sub_category__isnull=True) | Q(professional_sector_sub_category__exact='')).values('professional_sector_sub_category').annotate(count=Count('id')).order_by('-count')
-        top_employers = AlumniRecord.objects.exclude(Q(current_professional_affiliation__isnull=True) | Q(current_professional_affiliation__exact='')).values('current_professional_affiliation').annotate(count=Count('id')).order_by('-count')[:5]
+
+        # 1. Alumni Program Wise
+        program_distribution = Program.objects.annotate(
+            alumni_count=Count('batches__students__alumni_record')
+        ).filter(alumni_count__gt=0).values('name', 'alumni_count').order_by('-alumni_count')
+
+        # 2. Professional Sector Distribution
+        sector_distribution = AlumniRecord.objects.exclude(
+            Q(professional_sector__isnull=True) | Q(professional_sector__exact='')
+        ).values('professional_sector').annotate(count=Count('id')).order_by('-count')
+
+        # 3. Sub-sector Breakdown (specifically for Private and Government)
+        govt_sub_sector = AlumniRecord.objects.filter(professional_sector='Government').exclude(
+            Q(professional_sector_sub_category__isnull=True) | Q(professional_sector_sub_category__exact='')
+        ).values('professional_sector_sub_category').annotate(count=Count('id')).order_by('-count')
+        
+        private_sub_sector = AlumniRecord.objects.filter(professional_sector='Private').exclude(
+            Q(professional_sector_sub_category__isnull=True) | Q(professional_sector_sub_category__exact='')
+        ).values('professional_sector_sub_category').annotate(count=Count('id')).order_by('-count')
+
+        # 4. Data Health
+        # We define "Complete" as having an occupation, sector, and country.
         complete_profiles = AlumniRecord.objects.exclude(
             Q(current_occupation__isnull=True) | Q(current_occupation__exact='') |
             Q(professional_sector__isnull=True) | Q(professional_sector__exact='') |
-            Q(current_country_of_residence__isnull=True) | Q(current_country_of_residence__exact='') |
-            Q(city__isnull=True) | Q(city__exact='')
+            Q(current_country_of_residence__isnull=True) | Q(current_country_of_residence__exact='')
         ).count()
+        
         completeness_percentage = round((complete_profiles / total_alumni * 100), 1) if total_alumni > 0 else 0
 
         return Response({
-            "kpis": {
-                "total_alumni": total_alumni, "employed": employed_count,
-                "further_education": further_ed_count, "total_countries": countries_count,
-                "completeness_percentage": completeness_percentage
+            "total_alumni": total_alumni,
+            "program_distribution": list(program_distribution),
+            "sector_distribution": list(sector_distribution),
+            "sub_sector_distribution": {
+                "government": list(govt_sub_sector),
+                "private": list(private_sub_sector)
             },
-            "insights": {
-                "sectors": list(sector_distribution), "sub_sectors": list(sub_sector_distribution),
-                "top_employers": list(top_employers)
+            "data_health": {
+                "completeness_percentage": completeness_percentage,
+                "complete_profiles": complete_profiles
             }
         })
